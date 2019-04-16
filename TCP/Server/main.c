@@ -2,14 +2,23 @@
 #include <stdio.h>
 #include <unistd.h>
 
+#include <pthread.h>
+
 #include <arpa/inet.h>
 #include <sys/types.h>
 #include <sys/socket.h>
+
+struct connection{
+    struct sockaddr_in addr;
+    int sock;
+};
 
 int init();
 void start(int);
 void get_time(char t[]);
 void time_spam(int);
+
+void * connection_handle(void *);
 
 int main(int argc, char * argv[]) {
     int sock;
@@ -70,7 +79,6 @@ int init() {
 }
 
 void start(int sock) {
-    char time_wrap[10];
     while(1) {
         int slave_socket;
         struct sockaddr_in accept_addr;
@@ -81,16 +89,12 @@ void start(int sock) {
             continue;
         }
 
+        struct connection data;
+        data.addr = accept_addr;
+        data.sock = slave_socket;
 
-        get_time(time_wrap);
-        printf("%s: New Connection: %s\n", time_wrap, inet_ntoa(accept_addr.sin_addr));
-
-        time_spam(slave_socket);
-        shutdown(slave_socket, SHUT_RDWR);
-        close(slave_socket);
-
-        get_time(time_wrap);
-        printf("%s: Connection lost: %s\n", time_wrap, inet_ntoa(accept_addr.sin_addr));
+        pthread_t thread;
+        pthread_create(&thread, NULL, connection_handle, &data);
     }
 }
 
@@ -121,4 +125,21 @@ void get_time(char time_wrap[]) {
     timeval = *localtime(&timer);
     sprintf(time_wrap, "%.2d:%.2d:%.2d", timeval.tm_hour, timeval.tm_min, timeval.tm_sec);
     time_wrap[9] = '\0';
+}
+
+void * connection_handle(void * arg) {
+    struct connection * data = (struct connection *)arg;
+    char time_wrap[10];
+
+    get_time(time_wrap);
+    printf("%s: New Connection: %s\n", time_wrap, inet_ntoa(data->addr.sin_addr));
+
+    time_spam(data->sock);
+    shutdown(data->sock, SHUT_RDWR);
+    close(data->sock);
+
+    get_time(time_wrap);
+    printf("%s: Connection lost: %s\n", time_wrap, inet_ntoa(data->addr.sin_addr));
+
+    return NULL;
 }
